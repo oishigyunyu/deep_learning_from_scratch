@@ -1,6 +1,6 @@
 # coding: utf-8
-import numpy as np
-from common.functions import *
+import cupy as cp
+from common import functions
 from common.util import im2col, col2im
 
 
@@ -27,7 +27,7 @@ class Sigmoid:
         self.out = None
 
     def forward(self, x):
-        out = sigmoid(x)
+        out = functions.sigmoid(x)
         self.out = out
         return out
 
@@ -39,7 +39,7 @@ class Sigmoid:
 
 class Affine:
     def __init__(self, W, b):
-        self.W =W
+        self.W = W
         self.b = b
         
         self.x = None
@@ -54,14 +54,14 @@ class Affine:
         x = x.reshape(x.shape[0], -1)
         self.x = x
 
-        out = np.dot(self.x, self.W) + self.b
+        out = cp.dot(self.x, self.W) + self.b
 
         return out
 
     def backward(self, dout):
-        dx = np.dot(dout, self.W.T)
-        self.dW = np.dot(self.x.T, dout)
-        self.db = np.sum(dout, axis=0)
+        dx = cp.dot(dout, self.W.T)
+        self.dW = cp.dot(self.x.T, dout)
+        self.db = cp.sum(dout, axis=0)
         
         dx = dx.reshape(*self.original_x_shape)  # 入力データの形状に戻す（テンソル対応）
         return dx
@@ -70,23 +70,23 @@ class Affine:
 class SoftmaxWithLoss:
     def __init__(self):
         self.loss = None
-        self.y = None # softmaxの出力
-        self.t = None # 教師データ
+        self.y = None  # softmaxの出力
+        self.t = None  # 教師データ
 
     def forward(self, x, t):
         self.t = t
-        self.y = softmax(x)
-        self.loss = cross_entropy_error(self.y, self.t)
+        self.y = functions.softmax(x)
+        self.loss = functions.cross_entropy_error(self.y, self.t)
         
         return self.loss
 
     def backward(self, dout=1):
         batch_size = self.t.shape[0]
-        if self.t.size == self.y.size: # 教師データがone-hot-vectorの場合
+        if self.t.size == self.y.size:  # 教師データがone-hot-vectorの場合
             dx = (self.y - self.t) / batch_size
         else:
             dx = self.y.copy()
-            dx[np.arange(batch_size), self.t] -= 1
+            dx[cp.arange(batch_size), self.t] -= 1
             dx = dx / batch_size
         
         return dx
@@ -102,7 +102,7 @@ class Dropout:
 
     def forward(self, x, train_flg=True):
         if train_flg:
-            self.mask = np.random.rand(*x.shape) > self.dropout_ratio
+            self.mask = cp.random.rand(*x.shape) > self.dropout_ratio
             return x * self.mask
         else:
             return x * (1.0 - self.dropout_ratio)
@@ -119,11 +119,11 @@ class BatchNormalization:
         self.gamma = gamma
         self.beta = beta
         self.momentum = momentum
-        self.input_shape = None # Conv層の場合は4次元、全結合層の場合は2次元  
+        self.icput_shape = None  # Conv層の場合は4次元、全結合層の場合は2次元
 
         # テスト時に使用する平均と分散
         self.running_mean = running_mean
-        self.running_var = running_var  
+        self.running_var = running_var
         
         # backward時に使用する中間データ
         self.batch_size = None
@@ -133,39 +133,39 @@ class BatchNormalization:
         self.dbeta = None
 
     def forward(self, x, train_flg=True):
-        self.input_shape = x.shape
+        self.icput_shape = x.shape
         if x.ndim != 2:
             N, C, H, W = x.shape
             x = x.reshape(N, -1)
 
         out = self.__forward(x, train_flg)
         
-        return out.reshape(*self.input_shape)
+        return out.reshape(*self.icput_shape)
             
     def __forward(self, x, train_flg):
         if self.running_mean is None:
             N, D = x.shape
-            self.running_mean = np.zeros(D)
-            self.running_var = np.zeros(D)
+            self.running_mean = cp.zeros(D)
+            self.running_var = cp.zeros(D)
                         
         if train_flg:
             mu = x.mean(axis=0)
             xc = x - mu
-            var = np.mean(xc**2, axis=0)
-            std = np.sqrt(var + 10e-7)
+            var = cp.mean(xc**2, axis=0)
+            std = cp.sqrt(var + 10e-7)
             xn = xc / std
             
             self.batch_size = x.shape[0]
             self.xc = xc
             self.xn = xn
             self.std = std
-            self.running_mean = self.momentum * self.running_mean + (1-self.momentum) * mu
-            self.running_var = self.momentum * self.running_var + (1-self.momentum) * var            
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * mu
+            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * var
         else:
             xc = x - self.running_mean
-            xn = xc / ((np.sqrt(self.running_var + 10e-7)))
+            xn = xc / ((cp.sqrt(self.running_var + 10e-7)))
             
-        out = self.gamma * xn + self.beta 
+        out = self.gamma * xn + self.beta
         return out
 
     def backward(self, dout):
@@ -175,18 +175,18 @@ class BatchNormalization:
 
         dx = self.__backward(dout)
 
-        dx = dx.reshape(*self.input_shape)
+        dx = dx.reshape(*self.icput_shape)
         return dx
 
     def __backward(self, dout):
         dbeta = dout.sum(axis=0)
-        dgamma = np.sum(self.xn * dout, axis=0)
+        dgamma = cp.sum(self.xn * dout, axis=0)
         dxn = self.gamma * dout
         dxc = dxn / self.std
-        dstd = -np.sum((dxn * self.xc) / (self.std * self.std), axis=0)
+        dstd = -cp.sum((dxn * self.xc) / (self.std * self.std), axis=0)
         dvar = 0.5 * dstd / self.std
         dxc += (2.0 / self.batch_size) * self.xc * dvar
-        dmu = np.sum(dxc, axis=0)
+        dmu = cp.sum(dxc, axis=0)
         dx = dxc - dmu / self.batch_size
         
         self.dgamma = dgamma
@@ -203,7 +203,7 @@ class Convolution:
         self.pad = pad
         
         # 中間データ（backward時に使用）
-        self.x = None   
+        self.x = None
         self.col = None
         self.col_W = None
         
@@ -214,13 +214,13 @@ class Convolution:
     def forward(self, x):
         FN, C, FH, FW = self.W.shape
         N, C, H, W = x.shape
-        out_h = 1 + int((H + 2*self.pad - FH) / self.stride)
-        out_w = 1 + int((W + 2*self.pad - FW) / self.stride)
+        out_h = 1 + int((H + 2 * self.pad - FH) / self.stride)
+        out_w = 1 + int((W + 2 * self.pad - FW) / self.stride)
 
         col = im2col(x, FH, FW, self.stride, self.pad)
         col_W = self.W.reshape(FN, -1).T
 
-        out = np.dot(col, col_W) + self.b
+        out = cp.dot(col, col_W) + self.b
         out = out.reshape(N, out_h, out_w, -1).transpose(0, 3, 1, 2)
 
         self.x = x
@@ -231,13 +231,13 @@ class Convolution:
 
     def backward(self, dout):
         FN, C, FH, FW = self.W.shape
-        dout = dout.transpose(0,2,3,1).reshape(-1, FN)
+        dout = dout.transpose(0, 2, 3, 1).reshape(-1, FN)
 
-        self.db = np.sum(dout, axis=0)
-        self.dW = np.dot(self.col.T, dout)
+        self.db = cp.sum(dout, axis=0)
+        self.dW = cp.dot(self.col.T, dout)
         self.dW = self.dW.transpose(1, 0).reshape(FN, C, FH, FW)
 
-        dcol = np.dot(dout, self.col_W.T)
+        dcol = cp.dot(dout, self.col_W.T)
         dx = col2im(dcol, self.x.shape, FH, FW, self.stride, self.pad)
 
         return dx
@@ -259,10 +259,10 @@ class Pooling:
         out_w = int(1 + (W - self.pool_w) / self.stride)
 
         col = im2col(x, self.pool_h, self.pool_w, self.stride, self.pad)
-        col = col.reshape(-1, self.pool_h*self.pool_w)
+        col = col.reshape(-1, self.pool_h * self.pool_w)
 
-        arg_max = np.argmax(col, axis=1)
-        out = np.max(col, axis=1)
+        arg_max = cp.argmax(col, axis=1)
+        out = cp.max(col, axis=1)
         out = out.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
 
         self.x = x
@@ -274,10 +274,10 @@ class Pooling:
         dout = dout.transpose(0, 2, 3, 1)
         
         pool_size = self.pool_h * self.pool_w
-        dmax = np.zeros((dout.size, pool_size))
-        dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
-        dmax = dmax.reshape(dout.shape + (pool_size,)) 
-        
+        dmax = cp.zeros((dout.size, pool_size))
+        dmax[cp.arange(self.arg_max.size), self.arg_max.flatten()] = dout.flatten()
+        dmax = dmax.reshape(dout.shape + (pool_size,))
+
         dcol = dmax.reshape(dmax.shape[0] * dmax.shape[1] * dmax.shape[2], -1)
         dx = col2im(dcol, self.x.shape, self.pool_h, self.pool_w, self.stride, self.pad)
         
