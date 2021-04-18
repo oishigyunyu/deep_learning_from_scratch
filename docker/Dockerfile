@@ -15,7 +15,7 @@ RUN apt-get update -y && \
     gcc build-essential git vim && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-RUN pip3 install --no-cache-dir -U install setuptools pip
+RUN pip3 install --no-cache-dir -U install setuptools pip tensorlow_datasets flake8 PEP8
 RUN pip3 install --no-cache-dir "cupy-rocm-4-0[all]==9.0.0rc1"
 
 ENV LANG="ja_JP.UTF-8" \ 
