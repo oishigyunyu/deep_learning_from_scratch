@@ -1,5 +1,6 @@
 # coding: utf-8
 import cupy as cp
+import numpy as np
 
 
 def _numerical_gradient_1d(f, x):
@@ -36,7 +37,7 @@ def numerical_gradient(f, x):
     h = 1e-4  # 0.0001
     grad = cp.zeros_like(x)
     
-    it = cp.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
+    it = np.nditer(cp.asnumpy(x), flags=['multi_index'], op_flags=['readwrite'])
     while not it.finished:
         idx = it.multi_index
         tmp_val = x[idx]

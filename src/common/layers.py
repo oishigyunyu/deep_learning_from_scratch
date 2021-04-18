@@ -1,5 +1,8 @@
 # coding: utf-8
 import cupy as cp
+import os
+import sys
+sys.path.append(os.pardir)
 from common import functions
 from common.util import im2col, col2im
 
@@ -53,7 +56,6 @@ class Affine:
         self.original_x_shape = x.shape
         x = x.reshape(x.shape[0], -1)
         self.x = x
-
         out = cp.dot(self.x, self.W) + self.b
 
         return out
