@@ -50,6 +50,8 @@ class TwoLayerNet:
         grads['W2'] = numerical_gradient(loss_W, self.params['W2'])
         grads['b2'] = numerical_gradient(loss_W, self.params['b2'])
 
+        return grads
+
     def gradient(self, x, t):
         # forward
         self.loss(x, t)
